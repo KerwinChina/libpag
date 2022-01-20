@@ -22,12 +22,13 @@
 #include "pag/pag.h"
 #include "rendering/caches/TextContent.h"
 #include "rendering/graphics/Recorder.h"
+#include "rendering/caches/TextAtlas.h"
 
 namespace pag {
 std::unique_ptr<TextContent> RenderTexts(Property<TextDocumentHandle>* sourceText,
                                          TextPathOptions* pathOption, TextMoreOptions* moreOption,
-                                         std::vector<TextAnimator*>* animators, Frame layerFrame);
+                                         std::vector<TextAnimator*>* animators, Frame layerFrame, TextAtlas* atlas);
 
-void CalculateTextAscentAndDescent(TextDocumentHandle textDocument, float* pMinAscent,
+void CalculateTextAscentAndDescent(const TextDocumentHandle& textDocument, float* pMinAscent,
                                    float* pMaxDescent);
 }  // namespace pag

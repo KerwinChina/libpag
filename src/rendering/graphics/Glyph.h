@@ -224,6 +224,10 @@ class Glyph {
    */
   Matrix getTotalMatrix() const;
 
+  Matrix getExtraMatrix() const {
+    return extraMatrix;
+  }
+
  private:
   GlyphID glyphId = 0;
   Font textFont = {};

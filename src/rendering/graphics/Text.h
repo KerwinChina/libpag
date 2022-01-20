@@ -19,23 +19,10 @@
 #pragma once
 
 #include "core/Paint.h"
+#include "rendering/caches/TextAtlas.h"
 #include "rendering/graphics/Graphic.h"
 
 namespace pag {
-class TextRun {
- public:
-  ~TextRun() {
-    delete paints[0];
-    delete paints[1];
-  }
-
-  Matrix matrix = Matrix::I();
-  Paint* paints[2] = {nullptr, nullptr};
-  Font textFont = {};
-  std::vector<GlyphID> glyphIDs;
-  std::vector<Point> positions;
-};
-
 class Text : public Graphic {
  public:
   /**
@@ -44,8 +31,6 @@ class Text : public Graphic {
    */
   static std::shared_ptr<Graphic> MakeFrom(const std::vector<GlyphHandle>& glyphs,
                                            const Rect* calculatedBounds = nullptr);
-
-  ~Text() override;
 
   GraphicType type() const override {
     return GraphicType::Text;
@@ -57,12 +42,15 @@ class Text : public Graphic {
   void prepare(RenderCache* cache) const override;
   void draw(Canvas* canvas, RenderCache* cache) const override;
 
+  TextAtlas* atlas = nullptr;
+
  private:
-  std::vector<TextRun*> textRuns;
+  std::vector<GlyphHandle> glyphs;
   Rect bounds = Rect::MakeEmpty();
   bool hasAlpha = false;
 
-  explicit Text(const std::vector<TextRun*>& textRuns, const Rect& bounds, bool hasAlpha);
-  void drawTextRuns(Canvas* canvas, int paintIndex) const;
+  Text(std::vector<GlyphHandle> glyphs, const Rect& bounds, bool hasAlpha);
+
+  void draw(Canvas* canvas, bool colorGlyph) const;
 };
 }  // namespace pag

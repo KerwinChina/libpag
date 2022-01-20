@@ -105,11 +105,7 @@ void Glyph::computeStyleKey(BytesKey* styleKey) const {
   styleKey->write(m.getSkewX());
   styleKey->write(m.getSkewY());
   styleKey->write(m.getScaleY());
-  uint8_t fillValues[] = {fillColor.red, fillColor.green, fillColor.blue, alpha};
-  styleKey->write(fillValues);
-  uint8_t strokeValues[] = {strokeColor.red, strokeColor.green, strokeColor.blue,
-                            static_cast<uint8_t>(textStyle)};
-  styleKey->write(strokeValues);
+  styleKey->write(static_cast<uint32_t>(textStyle));
   styleKey->write(strokeWidth);
   styleKey->write(textFont.getTypeface()->uniqueID());
 }

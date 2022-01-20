@@ -26,7 +26,8 @@ TextContentCache::TextContentCache(TextLayer* layer)
       sourceText(layer->sourceText),
       pathOption(layer->pathOption),
       moreOption(layer->moreOption),
-      animators(&layer->animators) {
+      animators(&layer->animators),
+      atlas(TextAtlas::Make(sourceText, animators).release()) {
 }
 
 TextContentCache::TextContentCache(TextLayer* layer, ID cacheID,
@@ -36,7 +37,12 @@ TextContentCache::TextContentCache(TextLayer* layer, ID cacheID,
       sourceText(sourceText),
       pathOption(layer->pathOption),
       moreOption(layer->moreOption),
-      animators(&layer->animators) {
+      animators(&layer->animators),
+      atlas(TextAtlas::Make(sourceText, animators).release()) {
+}
+
+TextContentCache::~TextContentCache() {
+  delete atlas;
 }
 
 void TextContentCache::excludeVaryingRanges(std::vector<TimeRange>* timeRanges) const {
@@ -57,11 +63,10 @@ ID TextContentCache::getCacheID() const {
 }
 
 GraphicContent* TextContentCache::createContent(Frame layerFrame) const {
-  auto content = RenderTexts(sourceText, pathOption, moreOption, animators, layerFrame).release();
+  auto content = RenderTexts(sourceText, pathOption, moreOption, animators, layerFrame, atlas).release();
   if (_cacheEnabled) {
     content->colorGlyphs = Picture::MakeFrom(getCacheID(), content->colorGlyphs);
   }
   return content;
 }
-
 }  // namespace pag

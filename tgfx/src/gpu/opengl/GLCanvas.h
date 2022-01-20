@@ -36,6 +36,8 @@ class GLCanvas : public Canvas {
   void drawPath(const Path& path, const GradientPaint& gradient) override;
   void drawGlyphs(const GlyphID glyphIDs[], const Point positions[], size_t glyphCount,
                   const Font& font, const Paint& paint) override;
+  void drawAtlas(const Texture* atlas, const Matrix matrix[], const Rect tex[], const Color colors[],
+                 const Opacity alpha[], size_t count) override;
   Enum hasComplexPaint(const Rect& drawingBounds) const override;
   void drawPath(const Path& path, const Shader* shader);
 

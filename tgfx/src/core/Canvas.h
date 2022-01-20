@@ -159,6 +159,11 @@ class Canvas {
   virtual void drawGlyphs(const GlyphID glyphIDs[], const Point positions[], size_t glyphCount,
                           const Font& font, const Paint& paint) = 0;
 
+  // TODO(pengweilv): Support blend mode, atlas as source, colors as destination, colors can be
+  //  nullptr.
+  virtual void drawAtlas(const Texture* atlas, const Matrix matrix[], const Rect tex[],
+                         const Color colors[], const Opacity alpha[], size_t count) = 0;
+
   /**
    * Triggers the immediate execution of all pending draw operations.
    */

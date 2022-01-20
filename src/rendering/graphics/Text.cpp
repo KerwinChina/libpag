@@ -24,174 +24,75 @@
 #include "raster/PathEffect.h"
 
 namespace pag {
-static std::unique_ptr<Paint> CreateFillPaint(const Glyph* glyph) {
-  if (glyph->getStyle() != TextStyle::Fill && glyph->getStyle() != TextStyle::StrokeAndFill) {
-    return nullptr;
-  }
-  auto fillPaint = new Paint();
-  fillPaint->setStyle(PaintStyle::Fill);
-  fillPaint->setColor(glyph->getFillColor());
-  fillPaint->setAlpha(glyph->getAlpha());
-  return std::unique_ptr<Paint>(fillPaint);
-}
-
-static std::unique_ptr<Paint> CreateStrokePaint(const Glyph* glyph) {
-  if (glyph->getStyle() != TextStyle::Stroke && glyph->getStyle() != TextStyle::StrokeAndFill) {
-    return nullptr;
-  }
-  auto strokePaint = new Paint();
-  strokePaint->setStyle(PaintStyle::Stroke);
-  strokePaint->setColor(glyph->getStrokeColor());
-  strokePaint->setAlpha(glyph->getAlpha());
-  strokePaint->setStrokeWidth(glyph->getStrokeWidth());
-  return std::unique_ptr<Paint>(strokePaint);
-}
-
-static std::unique_ptr<TextRun> MakeTextRun(const std::vector<Glyph*>& glyphs) {
-  if (glyphs.empty()) {
-    return nullptr;
-  }
-  auto textRun = new TextRun();
-  auto firstGlyph = glyphs[0];
-  // Creates text paints.
-  textRun->paints[0] = CreateFillPaint(firstGlyph).release();
-  textRun->paints[1] = CreateStrokePaint(firstGlyph).release();
-  auto textStyle = firstGlyph->getStyle();
-  if ((textStyle == TextStyle::StrokeAndFill && !firstGlyph->getStrokeOverFill()) ||
-      textRun->paints[0] == nullptr) {
-    std::swap(textRun->paints[0], textRun->paints[1]);
-  }
-  // Creates text blob.
-  auto noTranslateMatrix = firstGlyph->getTotalMatrix();
-  noTranslateMatrix.setTranslateX(0);
-  noTranslateMatrix.setTranslateY(0);
-  textRun->matrix = noTranslateMatrix;
-  noTranslateMatrix.invert(&noTranslateMatrix);
-  std::vector<GlyphID> glyphIDs = {};
-  std::vector<Point> positions = {};
-  for (auto& glyph : glyphs) {
-    glyphIDs.push_back(glyph->getGlyphID());
-    auto m = glyph->getTotalMatrix();
-    m.postConcat(noTranslateMatrix);
-    positions.push_back({m.getTranslateX(), m.getTranslateY()});
-  }
-  textRun->textFont = firstGlyph->getFont();
-  textRun->glyphIDs = glyphIDs;
-  textRun->positions = positions;
-  return std::unique_ptr<TextRun>(textRun);
-}
-
 std::shared_ptr<Graphic> Text::MakeFrom(const std::vector<GlyphHandle>& glyphs,
                                         const Rect* calculatedBounds) {
   if (glyphs.empty()) {
     return nullptr;
   }
-  // 用 vector 存 key 的目的是让文字叠加顺序固定。
-  // 不固定的话叠加区域的像素会不一样，肉眼看不出来，但是测试用例的结果不稳定。
-  std::vector<BytesKey> styleKeys = {};
-  std::unordered_map<BytesKey, std::vector<Glyph*>, BytesHasher> styleMap = {};
-  for (auto& glyph : glyphs) {
-    if (!glyph->isVisible()) {
-      continue;
-    }
-    BytesKey styleKey = {};
-    glyph->computeStyleKey(&styleKey);
-    auto size = styleMap.size();
-    styleMap[styleKey].push_back(glyph.get());
-    if (styleMap.size() != size) {
-      styleKeys.push_back(styleKey);
-    }
-  }
   bool hasAlpha = false;
   Rect bounds = calculatedBounds ? *calculatedBounds : Rect::MakeEmpty();
-  std::vector<TextRun*> textRuns;
   float maxStrokeWidth = 0;
-  for (auto& key : styleKeys) {
-    auto& glyphList = styleMap[key];
-    Rect textBounds = Rect::MakeEmpty();
-    for (auto glyph : glyphList) {
-      auto glyphBounds = glyph->getBounds();
-      glyph->getMatrix().mapRect(&glyphBounds);
-      textBounds.join(glyphBounds);
-    }
-    if (textBounds.isEmpty()) {
-      continue;
-    }
+  for (auto& glyph : glyphs) {
+    auto glyphBounds = glyph->getBounds();
+    glyph->getMatrix().mapRect(&glyphBounds);
     if (calculatedBounds == nullptr) {
-      bounds.join(textBounds);
+      bounds.join(glyphBounds);
     }
-    auto strokeWidth = glyphList[0]->getStrokeWidth();
+    auto strokeWidth = glyph->getStrokeWidth();
     if (strokeWidth > maxStrokeWidth) {
       maxStrokeWidth = strokeWidth;
     }
-    if (glyphList[0]->getAlpha() != Opaque) {
+    if (glyph->getAlpha() != Opaque) {
       hasAlpha = true;
     }
-    auto textRun = MakeTextRun(glyphList).release();
-    textRuns.push_back(textRun);
   }
   bounds.outset(maxStrokeWidth, maxStrokeWidth);
-  if (textRuns.empty()) {
-    return nullptr;
-  }
-  return std::shared_ptr<Graphic>(new Text(textRuns, bounds, hasAlpha));
+  return std::shared_ptr<Graphic>(new Text(glyphs, bounds, hasAlpha));
 }
 
-Text::Text(const std::vector<TextRun*>& textRuns, const Rect& bounds, bool hasAlpha)
-    : textRuns(textRuns), bounds(bounds), hasAlpha(hasAlpha) {
-}
-
-Text::~Text() {
-  for (auto& textRun : textRuns) {
-    delete textRun;
-  }
+Text::Text(std::vector<GlyphHandle> glyphs, const Rect& bounds, bool hasAlpha)
+    : glyphs(std::move(glyphs)), bounds(bounds), hasAlpha(hasAlpha) {
 }
 
 void Text::measureBounds(Rect* rect) const {
   *rect = bounds;
 }
 
-static void ApplyPaintToPath(const Paint& paint, Path* path) {
-  if (paint.getStyle() == PaintStyle::Fill || path == nullptr) {
-    return;
+static Path GetStrokePath(const GlyphHandle& glyph, const Path& glyphPath) {
+  if (glyph == nullptr || glyph->getStyle() == TextStyle::Fill || glyphPath.isEmpty()) {
+    return {};
   }
-  auto strokePath = *path;
-  auto strokeEffect = PathEffect::MakeStroke(*paint.getStroke());
+  auto strokePath = glyphPath;
+  Stroke stroke(glyph->getStrokeWidth());
+  auto strokeEffect = PathEffect::MakeStroke(stroke);
   if (strokeEffect) {
     strokeEffect->applyTo(&strokePath);
   }
-  if (paint.getStyle() == PaintStyle::Stroke) {
-    *path = strokePath;
-  } else {
-    path->addPath(strokePath);
-  }
+  return strokePath;
 }
 
 bool Text::hitTest(RenderCache*, float x, float y) {
-  for (auto& textRun : textRuns) {
+  for (auto& glyph : glyphs) {
     auto local = Point::Make(x, y);
     Matrix invertMatrix = {};
-    if (!textRun->matrix.invert(&invertMatrix)) {
+    if (!glyph->getTotalMatrix().invert(&invertMatrix)) {
       continue;
     }
     invertMatrix.mapPoints(&local, 1);
     Path glyphPath = {};
-    int index = 0;
-    auto& textFont = textRun->textFont;
-    for (auto& glyphID : textRun->glyphIDs) {
-      textFont.getGlyphPath(glyphID, &glyphPath);
-      auto pos = textRun->positions[index++];
-      auto localX = local.x - pos.x;
-      auto localY = local.y - pos.y;
-      for (auto paint : textRun->paints) {
-        if (paint == nullptr) {
-          continue;
-        }
-        auto tempPath = glyphPath;
-        ApplyPaintToPath(*paint, &tempPath);
-        if (tempPath.contains(localX, localY)) {
-          return true;
-        }
+    auto textFont = glyph->getFont();
+    if (!textFont.getGlyphPath(glyph->getGlyphID(), &glyphPath)) {
+      continue;
+    }
+    if (glyph->getStyle() == TextStyle::Fill || glyph->getStyle() == TextStyle::StrokeAndFill) {
+      if (glyphPath.contains(local.x, local.y)) {
+        return true;
+      }
+    }
+    if (glyph->getStyle() == TextStyle::Stroke || glyph->getStyle() == TextStyle::StrokeAndFill) {
+      auto strokePath = GetStrokePath(glyph, glyphPath);
+      if (strokePath.contains(local.x, local.y)) {
+        return true;
       }
     }
   }
@@ -203,30 +104,19 @@ bool Text::getPath(Path* path) const {
     return false;
   }
   Path textPath = {};
-  for (auto& textRun : textRuns) {
+  for (auto& glyph : glyphs) {
     Path glyphPath = {};
-    int index = 0;
-    auto& textFont = textRun->textFont;
-    for (auto& glyphID : textRun->glyphIDs) {
-      Path tempPath = {};
-      if (!textFont.getGlyphPath(glyphID, &tempPath)) {
-        return false;
-      }
-      auto pos = textRun->positions[index];
-      tempPath.transform(Matrix::MakeTrans(pos.x, pos.y));
-      glyphPath.addPath(tempPath);
-      index++;
+    auto textFont = glyph->getFont();
+    if (!textFont.getGlyphPath(glyph->getGlyphID(), &glyphPath)) {
+      return false;
     }
-    glyphPath.transform(textRun->matrix);
-    Path tempPath = glyphPath;
-    auto firstPaint = textRun->paints[0];
-    auto secondPaint = textRun->paints[1];
-    ApplyPaintToPath(*firstPaint, &tempPath);
-    textPath.addPath(tempPath);
-    if (secondPaint != nullptr) {
-      tempPath = glyphPath;
-      ApplyPaintToPath(*secondPaint, &tempPath);
-      textPath.addPath(tempPath);
+    glyphPath.transform(glyph->getTotalMatrix());
+    if (glyph->getStyle() == TextStyle::Fill || glyph->getStyle() == TextStyle::StrokeAndFill) {
+      textPath.addPath(glyphPath);
+    }
+    auto strokePath = GetStrokePath(glyph, glyphPath);
+    if (!strokePath.isEmpty()) {
+      textPath.addPath(strokePath);
     }
   }
   path->addPath(textPath);
@@ -236,24 +126,72 @@ bool Text::getPath(Path* path) const {
 void Text::prepare(RenderCache*) const {
 }
 
-void Text::draw(Canvas* canvas, RenderCache*) const {
-  drawTextRuns(static_cast<Canvas*>(canvas), 0);
-  drawTextRuns(static_cast<Canvas*>(canvas), 1);
+static std::vector<PaintStyle> GetGlyphPaintStyles(const GlyphHandle& glyph) {
+  std::vector<PaintStyle> styles = {};
+  if (glyph->getStyle() == TextStyle::Fill) {
+    styles.push_back(PaintStyle::Fill);
+  } else if (glyph->getStyle() == TextStyle::Stroke) {
+    styles.push_back(PaintStyle::Stroke);
+  } else {
+    if (glyph->getStrokeOverFill()) {
+      styles.push_back(PaintStyle::Fill);
+      styles.push_back(PaintStyle::Stroke);
+    } else {
+      styles.push_back(PaintStyle::Stroke);
+      styles.push_back(PaintStyle::Fill);
+    }
+  }
+  return styles;
 }
 
-void Text::drawTextRuns(Canvas* canvas, int paintIndex) const {
-  auto totalMatrix = canvas->getMatrix();
-  for (auto& textRun : textRuns) {
-    auto textPaint = textRun->paints[paintIndex];
-    if (!textPaint) {
+void Text::draw(Canvas* canvas, RenderCache*) const {
+  if (atlas == nullptr) {
+    return;
+  }
+  atlas->draw(canvas);
+  draw(canvas, false);
+  draw(canvas, true);
+}
+
+void Text::draw(Canvas* canvas, bool colorGlyph) const {
+  auto atlasTexture = colorGlyph ? atlas->getColorAtlasTexture() : atlas->getMaskAtlasTexture();
+  std::vector<Matrix> matrices;
+  std::vector<Rect> rects;
+  std::vector<Color> colors;
+  std::vector<Opacity> alphas;
+  for (auto& glyph : glyphs) {
+    if (!glyph->isVisible() || (colorGlyph != glyph->getFont().getTypeface()->hasColor())) {
       continue;
     }
-    canvas->setMatrix(totalMatrix);
-    canvas->concat(textRun->matrix);
-    auto glyphs = &textRun->glyphIDs[0];
-    auto positions = &textRun->positions[0];
-    canvas->drawGlyphs(glyphs, positions, textRun->glyphIDs.size(), textRun->textFont, *textPaint);
+    auto styles = GetGlyphPaintStyles(glyph);
+    Rect location = Rect::MakeEmpty();
+    for (auto style : styles) {
+      if (!atlas->getLocation(glyph, style, &location)) {
+        continue;
+      }
+      float strokeWidth = 0;
+      Color color = glyph->getFillColor();
+      if (style == PaintStyle::Stroke) {
+        strokeWidth = glyph->getStrokeWidth();
+        color = glyph->getStrokeColor();
+      }
+      auto glyphBounds = glyph->getBounds();
+      Matrix invertedMatrix = Matrix::I();
+      glyph->getExtraMatrix().invert(&invertedMatrix);
+      auto originBounds = glyphBounds;
+      invertedMatrix.mapRect(&originBounds);
+      auto matrix = Matrix::I();
+      matrix.postScale((originBounds.width() + strokeWidth * 2) / location.width(),
+                       (originBounds.height() + strokeWidth * 2) / location.height());
+      matrix.postTranslate(originBounds.x() - strokeWidth, originBounds.y() - strokeWidth);
+      matrix.postConcat(glyph->getTotalMatrix());
+      matrices.push_back(matrix);
+      rects.push_back(location);
+      colors.push_back(color);
+      alphas.push_back(glyph->getAlpha());
+    }
   }
-  canvas->setMatrix(totalMatrix);
+  canvas->drawAtlas(atlasTexture.get(), &matrices[0], &rects[0], colorGlyph ? nullptr : &colors[0],
+                    &alphas[0], matrices.size());
 }
 }  // namespace pag

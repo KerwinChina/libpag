@@ -19,12 +19,15 @@
 #pragma once
 
 #include "ContentCache.h"
+#include "TextAtlas.h"
 
 namespace pag {
 class TextContentCache : public ContentCache {
  public:
   explicit TextContentCache(TextLayer* layer);
   TextContentCache(TextLayer* layer, ID cacheID, Property<TextDocumentHandle>* sourceText);
+
+  ~TextContentCache() override;
 
  protected:
   void excludeVaryingRanges(std::vector<TimeRange>* timeRanges) const override;
@@ -37,5 +40,6 @@ class TextContentCache : public ContentCache {
   TextPathOptions* pathOption;
   TextMoreOptions* moreOption;
   std::vector<TextAnimator*>* animators;
+  TextAtlas* atlas = nullptr;
 };
 }  // namespace pag

@@ -473,7 +473,7 @@ std::shared_ptr<Graphic> RenderTextBackground(const std::vector<std::vector<Glyp
 
 std::unique_ptr<TextContent> RenderTexts(Property<TextDocumentHandle>* sourceText, TextPathOptions*,
                                          TextMoreOptions*, std::vector<TextAnimator*>* animators,
-                                         Frame layerFrame) {
+                                         Frame layerFrame, TextAtlas* atlas) {
   auto textDocument = sourceText->getValueAt(layerFrame);
   auto textPaint = CreateTextPaint(textDocument.get());
   auto glyphList = Glyph::BuildFromText(textDocument->text, textPaint);
@@ -513,14 +513,15 @@ std::unique_ptr<TextContent> RenderTexts(Property<TextDocumentHandle>* sourceTex
 
   auto normalText = Text::MakeFrom(simpleGlyphs, hasAnimators ? nullptr : &textBounds);
   if (normalText) {
+    std::static_pointer_cast<Text>(normalText)->atlas = atlas;
     contents.push_back(normalText);
   }
   auto graphic = Graphic::MakeCompose(contents);
   auto colorText = Text::MakeFrom(colorGlyphs);
-  return std::unique_ptr<TextContent>(new TextContent(std::move(graphic), std::move(colorText)));
+  return std::make_unique<TextContent>(std::move(graphic), std::move(colorText));
 }
 
-void CalculateTextAscentAndDescent(TextDocumentHandle textDocument, float* pMinAscent,
+void CalculateTextAscentAndDescent(const TextDocumentHandle& textDocument, float* pMinAscent,
                                    float* pMaxDescent) {
   auto textPaint = CreateTextPaint(textDocument.get());
   auto glyphList = Glyph::BuildFromText(textDocument->text, textPaint);
