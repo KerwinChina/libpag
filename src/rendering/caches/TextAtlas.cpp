@@ -225,6 +225,7 @@ std::unique_ptr<TextAtlas> TextAtlas::Make(Property<TextDocumentHandle>* sourceT
     auto bHeight = b->getBounds().height();
     return aWidth * aHeight > bWidth * bHeight || aWidth > bWidth || aHeight > bHeight;
   });
+  // TODO(pengweilv): remove same glyphs.
   std::vector<GlyphHandle> maskGlyphs = {};
   std::vector<GlyphHandle> colorGlyphs = {};
   for (auto& glyph : glyphs) {
@@ -276,8 +277,7 @@ void Atlas::ComputeAtlasKey(const Glyph* glyph, PaintStyle style, BytesKey* atla
   }
   flags |= (style == PaintStyle::Fill ? 1 : 0) << 18;
   atlasKey->write(flags);
-  // TODO(pengweilv): typeface uniqueID
-  //  atlasKey->write(textFont.getTypeface()->uniqueID());
+  atlasKey->write(glyph->getFont().getTypeface()->uniqueID());
   atlasKey->write(glyph->getFont().getSize());
   atlasKey->write(glyph->getStrokeWidth());
 }

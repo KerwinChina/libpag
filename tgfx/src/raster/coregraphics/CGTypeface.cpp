@@ -20,6 +20,7 @@
 #include "CGScalerContext.h"
 #include "base/utils/UTF8Text.h"
 #include "base/utils/UniqueID.h"
+#include "raster/TypefaceCache.h"
 
 namespace pag {
 std::string StringFromCFString(CFStringRef src) {
@@ -112,8 +113,16 @@ std::shared_ptr<CGTypeface> CGTypeface::Make(CTFontRef ctFont) {
   if (ctFont == nullptr) {
     return nullptr;
   }
-  auto typeface = std::shared_ptr<CGTypeface>(new CGTypeface(ctFont));
+  auto typeface = std::static_pointer_cast<CGTypeface>(
+      TypefaceCache::FindByPredicate([ctFont](Typeface* face) -> bool {
+        return CFEqual(ctFont, static_cast<CGTypeface*>(face)->ctFont);
+      }));
+  if (typeface) {
+    return typeface;
+  }
+  typeface = std::shared_ptr<CGTypeface>(new CGTypeface(ctFont));
   typeface->weakThis = typeface;
+  TypefaceCache::Add(typeface);
   return typeface;
 }
 
